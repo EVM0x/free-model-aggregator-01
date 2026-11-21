@@ -28,7 +28,7 @@
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 // ---------------------------------------------------------------------------
 // small helpers
@@ -36,23 +36,15 @@ import { createHash } from 'node:crypto';
 
 type Json = Record<string, unknown>;
 
-const isRecord = (v: unknown): v is Json =>
+export const isRecord = (v: unknown): v is Json =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
 
-const asString = (v: unknown): string => (typeof v === 'string' ? v : '');
+export const asString = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-const asNumber = (v: unknown): number | null =>
+export const asNumber = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
 
-const asBool = (v: unknown): boolean => v === true;
-
-const sha8 = (text: string): string =>
-  createHash('sha256').update(text).digest('hex').slice(0, 8);
-
-const sha8bytes = (bytes: Buffer): string =>
-  createHash('sha256').update(bytes).digest('hex').slice(0, 8);
-
-const clampText = (v: unknown): string => (typeof v === 'string' ? v : '');
+export const asBool = (v: unknown): boolean => v === true;
 
 /** Fixed timestamp: the export must not depend on the wall clock. */
 const CREATED = 1767225600;
@@ -111,7 +103,7 @@ interface Brief {
   manifest: RequestSpec[];
 }
 
-const EMPTY_REQUIRES: Requires = {
+export const EMPTY_REQUIRES: Requires = {
   tools: false,
   vision: false,
   json: false,
@@ -119,7 +111,7 @@ const EMPTY_REQUIRES: Requires = {
 };
 
 /** Every balanced JSON object in a text, in order, skipping braces in strings. */
-function jsonObjectsIn(text: string): unknown[] {
+export function jsonObjectsIn(text: string): unknown[] {
   const out: unknown[] = [];
   for (let i = 0; i < text.length; i += 1) {
     if (text[i] !== '{') continue;
@@ -154,10 +146,10 @@ function jsonObjectsIn(text: string): unknown[] {
   return out;
 }
 
-const schemaOf = (v: unknown): string =>
+export const schemaOf = (v: unknown): string =>
   isRecord(v) && typeof v.schema === 'string' ? v.schema : '';
 
-function readBrief(file: string): Brief {
+export function readBrief(file: string): Brief {
   const brief: Brief = { providers: [], ratings: [], manifest: [] };
   let text = '';
   try {
@@ -263,7 +255,7 @@ interface Probe {
 
 const ENV_URL = (process.env.MAKEFUN_ENV_URL ?? '').replace(/\/+$/, '');
 
-function authHeaders(p: Provider): Record<string, string> {
+export function authHeaders(p: Provider): Record<string, string> {
   const h: Record<string, string> = {};
   if (p.auth === 'bearer' && p.key !== '') h.authorization = `Bearer ${p.key}`;
   else if (p.auth === 'x-api-key' && p.key !== '') h['x-api-key'] = p.key;
@@ -271,16 +263,16 @@ function authHeaders(p: Provider): Record<string, string> {
   return h;
 }
 
-function providerBase(p: Provider): string {
+export function providerBase(p: Provider): string {
   const base = p.path.startsWith('/') ? p.path : `/${p.path}`;
   return `${ENV_URL}${base}`;
 }
 
-function catalogUrl(p: Provider): string {
+export function catalogUrl(p: Provider): string {
   return p.wire === 'gemini' ? `${providerBase(p)}/v1beta/models` : `${providerBase(p)}/v1/models`;
 }
 
-function parseCatalog(p: Provider, body: Json): ProbedModel[] {
+export function parseCatalog(p: Provider, body: Json): ProbedModel[] {
   const models: ProbedModel[] = [];
   if (p.wire === 'gemini') {
     const list = Array.isArray(body.models) ? body.models : [];
@@ -362,7 +354,7 @@ interface CatalogDoc {
  * hiccups) and only fall back to the probe's own listing if the table has no
  * rows for that provider at all.
  */
-function buildCatalog(brief: Brief, probes: Map<string, Probe>): CatalogDoc {
+export function buildCatalog(brief: Brief, probes: Map<string, Probe>): CatalogDoc {
   const providers: CatalogProvider[] = [];
   for (const p of brief.providers) {
     const rows = brief.ratings.filter((r) => r.provider === p.id);
@@ -438,7 +430,7 @@ interface Normalized {
   toolChoice: unknown;
 }
 
-const emptyNormalized = (): Normalized => ({
+export const emptyNormalized = (): Normalized => ({
   systemText: '',
   userText: '',
   tools: [],
@@ -452,7 +444,7 @@ const emptyNormalized = (): Normalized => ({
 });
 
 /** text of a content value: a string, or the text blocks of an array. */
-function blocksText(content: unknown): string {
+export function blocksText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   const parts: string[] = [];
@@ -463,7 +455,7 @@ function blocksText(content: unknown): string {
   return parts.join('\n');
 }
 
-function stringList(v: unknown): string[] {
+export function stringList(v: unknown): string[] {
   if (typeof v === 'string') return [v];
   if (!Array.isArray(v)) return [];
   const out: string[] = [];
@@ -471,14 +463,14 @@ function stringList(v: unknown): string[] {
   return out;
 }
 
-function dataUrlImage(url: string): ImageSpec | null {
+export function dataUrlImage(url: string): ImageSpec | null {
   const m = /^data:([^,]*);base64,(.*)$/.exec(url);
   if (!m) return null;
   const mediaType = m[1] === '' ? 'image/png' : m[1];
   return { mediaType, data: m[2] };
 }
 
-function toolFromOpenAI(raw: unknown): ToolSpec | null {
+export function toolFromOpenAI(raw: unknown): ToolSpec | null {
   if (!isRecord(raw)) return null;
   const fn = isRecord(raw.function) ? raw.function : null;
   if (!fn) return null;
@@ -491,7 +483,7 @@ function toolFromOpenAI(raw: unknown): ToolSpec | null {
   };
 }
 
-function normalizeOpenAI(body: Json): Normalized {
+export function normalizeOpenAI(body: Json): Normalized {
   const n = emptyNormalized();
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const systemParts: string[] = [];
@@ -515,12 +507,14 @@ function normalizeOpenAI(body: Json): Normalized {
         if (!isRecord(part)) continue;
         const type = asString(part.type);
         if (type !== 'image_url' && type !== 'input_image') continue;
-        const raw2 = type === 'image_url' ? part.image_url : part.image_url;
+        // `image_url` is a string in the Responses API and an object with a
+        // `url` field in Chat Completions; both spell the field the same way.
+        const imageUrl = part.image_url;
         const url =
-          typeof raw2 === 'string'
-            ? raw2
-            : isRecord(raw2) && typeof raw2.url === 'string'
-              ? raw2.url
+          typeof imageUrl === 'string'
+            ? imageUrl
+            : isRecord(imageUrl) && typeof imageUrl.url === 'string'
+              ? imageUrl.url
               : asString(part.url);
         if (url === '') continue;
         n.image = dataUrlImage(url);
@@ -543,7 +537,7 @@ function normalizeOpenAI(body: Json): Normalized {
   return n;
 }
 
-function normalizeAnthropic(body: Json): Normalized {
+export function normalizeAnthropic(body: Json): Normalized {
   const n = emptyNormalized();
   const system = body.system;
   if (typeof system === 'string') n.systemText = system;
@@ -596,7 +590,7 @@ function normalizeAnthropic(body: Json): Normalized {
   return n;
 }
 
-const normalizeFor = (api: 'openai' | 'anthropic', body: Json): Normalized =>
+export const normalizeFor = (api: 'openai' | 'anthropic', body: Json): Normalized =>
   api === 'openai' ? normalizeOpenAI(body) : normalizeAnthropic(body);
 
 // ---------------------------------------------------------------------------
@@ -612,7 +606,7 @@ const textOnly = (text: string, image: ImageSpec | null, wire: Wire): Json[] => 
   return parts;
 };
 
-function openAIUserParts(n: Normalized): Json[] {
+export function openAIUserParts(n: Normalized): Json[] {
   const parts: Json[] = [];
   if (n.userText !== '' || n.image === null) parts.push({ type: 'text', text: n.userText });
   if (n.image) {
@@ -624,7 +618,7 @@ function openAIUserParts(n: Normalized): Json[] {
   return parts;
 }
 
-function anthropicUserBlocks(n: Normalized): Json[] {
+export function anthropicUserBlocks(n: Normalized): Json[] {
   const blocks: Json[] = [];
   if (n.userText !== '' || n.image === null) blocks.push({ type: 'text', text: n.userText });
   if (n.image) {
@@ -636,14 +630,14 @@ function anthropicUserBlocks(n: Normalized): Json[] {
   return blocks;
 }
 
-function geminiParts(n: Normalized): Json[] {
+export function geminiParts(n: Normalized): Json[] {
   const parts: Json[] = [];
   if (n.userText !== '' || n.image === null) parts.push({ text: n.userText });
   if (n.image) parts.push({ inlineData: { mimeType: n.image.mediaType, data: n.image.data } });
   return parts;
 }
 
-function toolChoiceForAnthropic(choice: unknown): Json | null {
+export function toolChoiceForAnthropic(choice: unknown): Json | null {
   if (choice === 'auto') return { type: 'auto' };
   if (choice === 'required' || choice === 'any') return { type: 'any' };
   if (choice === 'none') return null;
@@ -653,7 +647,7 @@ function toolChoiceForAnthropic(choice: unknown): Json | null {
   return null;
 }
 
-function upstreamBody(wire: Wire, modelId: string, n: Normalized): Json {
+export function upstreamBody(wire: Wire, modelId: string, n: Normalized): Json {
   if (wire === 'openai') {
     const messages: Json[] = [];
     if (n.systemText !== '') messages.push({ role: 'system', content: n.systemText });
@@ -741,7 +735,7 @@ interface Answer {
   output: number | null;
 }
 
-function parseOpenAIAnswer(body: Json): Answer {
+export function parseOpenAIAnswer(body: Json): Answer {
   const choices = Array.isArray(body.choices) ? body.choices : [];
   const first = choices.length > 0 && isRecord(choices[0]) ? choices[0] : {};
   const message = isRecord(first.message) ? first.message : {};
@@ -769,7 +763,7 @@ function parseOpenAIAnswer(body: Json): Answer {
   };
 }
 
-function parseAnthropicAnswer(body: Json): Answer {
+export function parseAnthropicAnswer(body: Json): Answer {
   const content = Array.isArray(body.content) ? body.content : [];
   const texts: string[] = [];
   const toolCalls: ToolCall[] = [];
@@ -795,7 +789,7 @@ function parseAnthropicAnswer(body: Json): Answer {
   };
 }
 
-function parseGeminiAnswer(body: Json): Answer {
+export function parseGeminiAnswer(body: Json): Answer {
   const candidates = Array.isArray(body.candidates) ? body.candidates : [];
   const first = candidates.length > 0 && isRecord(candidates[0]) ? candidates[0] : {};
   const content = isRecord(first.content) ? first.content : {};
@@ -823,7 +817,7 @@ function parseGeminiAnswer(body: Json): Answer {
   };
 }
 
-const parseAnswerFor = (wire: Wire, body: Json): Answer =>
+export const parseAnswerFor = (wire: Wire, body: Json): Answer =>
   wire === 'openai'
     ? parseOpenAIAnswer(body)
     : wire === 'anthropic'
@@ -834,7 +828,7 @@ const parseAnswerFor = (wire: Wire, body: Json): Answer =>
 // stop reasons: provider vocabulary -> family -> client vocabulary
 // ---------------------------------------------------------------------------
 
-function stopFamily(reason: string): number | null {
+export function stopFamily(reason: string): number | null {
   const r = reason.toLowerCase();
   if (r === 'end_turn' || r === 'endturn' || r === 'stop' || r === 'stop_sequence' || r === 'stopsequence') return 0;
   if (r === 'max_tokens' || r === 'maxtokens' || r === 'length' || r === 'max_output_tokens') return 1;
@@ -844,14 +838,14 @@ function stopFamily(reason: string): number | null {
   return null;
 }
 
-const openAIStop = (family: number | null): string => {
+export const openAIStop = (family: number | null): string => {
   if (family === 1) return 'length';
   if (family === 2) return 'tool_calls';
   if (family === 3) return 'content_filter';
   return 'stop';
 };
 
-const anthropicStop = (family: number | null): string => {
+export const anthropicStop = (family: number | null): string => {
   if (family === 1) return 'max_tokens';
   if (family === 2) return 'tool_use';
   if (family === 3) return 'refusal';
@@ -878,7 +872,7 @@ interface Candidate {
   wire: Wire;
 }
 
-const state = {
+export const state = {
   brief: { providers: [], ratings: [], manifest: [] } as Brief,
   probes: new Map<string, Probe>(),
   catalog: { providers: [] } as CatalogDoc,
@@ -894,9 +888,9 @@ const state = {
   started: false,
 };
 
-const pairKey = (c: Candidate): string => `${c.providerId}\u0000${c.modelId}`;
+export const pairKey = (c: Candidate): string => `${c.providerId}\u0000${c.modelId}`;
 
-const providerStateOf = (id: string): ProviderState => {
+export const providerStateOf = (id: string): ProviderState => {
   let s = state.providerState.get(id);
   if (!s) {
     s = { calls: 0, successes: 0, hard: 0, soft: 0 };
@@ -905,16 +899,16 @@ const providerStateOf = (id: string): ProviderState => {
   return s;
 };
 
-const isDead = (id: string): boolean => providerStateOf(id).hard > 0;
+export const isDead = (id: string): boolean => providerStateOf(id).hard > 0;
 
-const dialable = (id: string): boolean => {
+export const dialable = (id: string): boolean => {
   // if not one probe answered, the probe itself is what is broken: try anyway
   if (!state.anyDialable) return true;
   const probe = state.probes.get(id);
   return !!probe && probe.ok;
 };
 
-function meetsRequires(row: RatingRow, requires: Requires): boolean {
+export function meetsRequires(row: RatingRow, requires: Requires): boolean {
   if (requires.tools && !row.tools) return false;
   if (requires.vision && !row.vision) return false;
   if (requires.json && !row.json) return false;
@@ -931,7 +925,7 @@ function meetsRequires(row: RatingRow, requires: Requires): boolean {
  * response_format: only then does the provider's wire have to be able to pass it
  * through, so only then is the Anthropic wire (which has no such field) excluded.
  */
-function candidatesFor(requires: Requires, carryJson: boolean): Candidate[] {
+export function candidatesFor(requires: Requires, carryJson: boolean): Candidate[] {
   const out: Candidate[] = [];
   for (const p of state.brief.providers) {
     if (!dialable(p.id)) continue;
@@ -960,7 +954,7 @@ function candidatesFor(requires: Requires, carryJson: boolean): Candidate[] {
  * provider while still spreading over near-equal ones instead of draining a
  * single free tier blind.
  */
-function capacityOf(id: string): number {
+export function capacityOf(id: string): number {
   const s = providerStateOf(id);
   if (s.hard > 0) return 0;
   return Math.max(0, s.successes + 3 - s.soft);
@@ -975,7 +969,7 @@ interface Plan {
  * is only given as many requests as its estimated capacity, so near-equal
  * ratings spread over providers that have been used least.
  */
-function planRemaining(specs: RequestSpec[], candidateCache: Map<string, Candidate[]>): Plan {
+export function planRemaining(specs: RequestSpec[], candidateCache: Map<string, Candidate[]>): Plan {
   const load = new Map<string, number>();
   for (const [id, s] of state.providerState) load.set(id, s.calls);
   const pairs: { rating: number; weight: number; order: number; reqId: string; cand: Candidate }[] = [];
@@ -1037,7 +1031,7 @@ const planKey = (spec: RequestSpec): string =>
  * model answers, which is the failover the trial scores), and only as a last
  * resort the providers we have written off.
  */
-function attemptOrder(spec: RequestSpec, cands: Candidate[], plan: Plan): Candidate[] {
+export function attemptOrder(spec: RequestSpec, cands: Candidate[], plan: Plan): Candidate[] {
   const order: Candidate[] = [];
   const seen = new Set<string>();
   const eligible = new Set<string>(cands.map(pairKey));
@@ -1083,7 +1077,7 @@ type CallResult =
  * survive. Anything we cannot read (a 5xx, a broken key) is treated as
  * permanent, which is the safe direction.
  */
-function classifyRefusal(status: number, body: unknown): { code: string; message: string; hard: boolean } {
+export function classifyRefusal(status: number, body: unknown): { code: string; message: string; hard: boolean } {
   let code = '';
   let message = '';
   if (isRecord(body) && isRecord(body.error)) {
@@ -1112,7 +1106,7 @@ async function withProviderLock<T>(id: string, run: () => Promise<T>): Promise<T
   return next;
 }
 
-function inferenceUrl(p: Provider, modelId: string): string {
+export function inferenceUrl(p: Provider, modelId: string): string {
   if (p.wire === 'openai') return `${providerBase(p)}/v1/chat/completions`;
   if (p.wire === 'anthropic') return `${providerBase(p)}/v1/messages`;
   return `${providerBase(p)}/v1beta/models/${encodeURIComponent(modelId)}:generateContent`;
@@ -1458,7 +1452,7 @@ function readJsonBody(req: IncomingMessage): Promise<Json | null> {
   });
 }
 
-function inferRequires(body: Json, api: 'openai' | 'anthropic'): Requires {
+export function inferRequires(body: Json, api: 'openai' | 'anthropic'): Requires {
   const n = normalizeFor(api, body);
   return {
     tools: n.tools.length > 0,
@@ -1713,7 +1707,14 @@ async function main(): Promise<void> {
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT', () => process.exit(0));
 
-void main().catch((error: unknown) => {
-  log(`fatal: ${String(error)}`);
-  process.exit(1);
-});
+// Only run when executed directly. Importing the module (as the tests do) must
+// not start the server or call process.exit.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  void main().catch((error: unknown) => {
+    log(`fatal: ${String(error)}`);
+    process.exit(1);
+  });
+}
