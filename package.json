@@ -1,0 +1,16 @@
+{
+  "name": "free-model-aggregator-01",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "One self-contained server that serves the [OI] and Anthropic APIs and routes each request to the best free model that can carry it",
+  "license": "MIT",
+  "scripts": {
+    "start": "node main.ts",
+    "list": "node main.ts --list",
+    "test": "node --test test/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}
